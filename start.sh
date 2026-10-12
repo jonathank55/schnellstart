@@ -32,23 +32,19 @@ ANZAHL = len(titel_liste)
 EINRUECK = "    "
 TITEL = "SCHNELLSTART"
 
-RESIZE = [False]
-AUSWAHL = [0]
-
 AUS = "\033[?25l"
 AN = "\033[?25h"
 LOESCHEN = "\033[2J\033[3J\033[H"
 
 
 def fenstergroesse():
-    # get_terminal_size liefert (columns, lines) – Spalten zuerst!
     try:
-        spalten, zeilen = os.get_terminal_size(0)
+        zeilen, spalten = os.get_terminal_size(0)
     except Exception:
         try:
-            spalten, zeilen = os.get_terminal_size(1)
+            zeilen, spalten = os.get_terminal_size(1)
         except Exception:
-            spalten, zeilen = 80, 24
+            zeilen, spalten = 24, 80
     return zeilen, spalten
 
 
@@ -86,15 +82,6 @@ def zeichne_menue(auswahl):
 
 
 def lies_taste(fd):
-    # Auf Eingabe warten und nebenbei auf Fenstergrößenänderung reagieren:
-    # Select wacht alle 0,1 s auf, prüft dann das RESIZE-Flag und zeichnet neu.
-    while True:
-        r, _, _ = select.select([fd], [], [], 0.1)
-        if RESIZE[0]:
-            RESIZE[0] = False
-            zeichne_menue(AUSWAHL[0])
-        if r:
-            break
     ch = os.read(fd, 1)
     if ch == b"\x1b" and select.select([fd], [], [], 0.02)[0]:
         ch += os.read(fd, 2)
@@ -120,10 +107,10 @@ def main():
     import signal
 
     def bei_resize(sig, frame):
-        RESIZE[0] = True
+        zeichne_menue(AUSWAHL[0])
 
     signal.signal(signal.SIGWINCH, bei_resize)
-    AUSWAHL[0] = 0
+    AUSWAHL = [0]
 
     sys.stdout.write(AUS)
     sys.stdout.flush()
@@ -151,13 +138,11 @@ def main():
         termios.tcsetattr(fd, termios.TCSADRAIN, alt)
 
     if ist_gui_befehl(befehl):
-        # GUI-Programm entkoppelt starten (überlebt das Skript) ...
         subprocess.Popen(
             befehl, shell=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-        # ... und Terminalfenster sofort schließen
         if sys.platform == "darwin":
             subprocess.run(
                 ["osascript", "-e",
