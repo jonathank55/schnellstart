@@ -51,7 +51,7 @@ def zeichne_menue():
     p.append("\n")
     for i, titel in enumerate(titel_liste):
         if i == auswahl:
-            p.append(f"{EINRUECK}[{i + 1}] ▸ \033[1m{titel}\033[0m\n")
+            p.append(f"{EINRUECK}\033[1m[{i + 1}] ▸ {titel}\033[0m\n")
         else:
             p.append(f"{EINRUECK}[{i + 1}]   {titel}\n")
     sys.stdout.write("".join(p))
