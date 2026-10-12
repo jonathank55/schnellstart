@@ -51,9 +51,9 @@ def zeichne_menue():
     p.append("\n")
     for i, titel in enumerate(titel_liste):
         if i == auswahl:
-            p.append(f"{EINRUECK}▸ \033[1m{titel}\033[0m\n")
+            p.append(f"{EINRUECK}[{i + 1}] ▸ \033[1m{titel}\033[0m\n")
         else:
-            p.append(f"{EINRUECK}  {titel}\n")
+            p.append(f"{EINRUECK}[{i + 1}]   {titel}\n")
     sys.stdout.write("".join(p))
     sys.stdout.flush()
 
@@ -97,6 +97,11 @@ def main():
         elif taste in ("\x1b", "q"):
             beenden(fd, alt)
         elif taste in ("", "\r", "\n"):
+            break
+        elif taste.isdigit() and 1 <= int(taste) <= ANZAHL:
+            # Nummertaste: Eintrag direkt auswählen und starten
+            auswahl = int(taste) - 1
+            zeichne_menue()
             break
 
     befehl = befehl_liste[auswahl]
