@@ -1,30 +1,9 @@
 #!/bin/bash
 # SCHNELLSTART – Einfaches Terminal-Schnellstartmenü für macOS
+# Aufruf: start
 
 CONFIG="$HOME/.config/schnellstart/config.json"
-
-cursor_aus() { printf '\033[?25l'; }
-cursor_an()  { printf '\033[?25h'; }
-aufraeumen() { cursor_an; }
-trap aufraeumen EXIT
-
-# Menü sauber vom Bildschirm entfernen und Cursor wiederherstellen
-beenden() {
-    printf '\033[2J\033[3J\033[H'
-    cursor_an
-    exit 0
-}
-
-ist_gui_befehl() {
-    case "$1" in
-        *open\ -a*|*osascript*) return 0 ;;
-    esac
-    return 1
-}
-
-if [[ ! -f "$CONFIG" ]]; then
-    CONFIG="$(cd "$(dirname "$0")" && pwd)/config.json"
-fi
+[[ -f "$CONFIG" ]] || CONFIG="$(cd "$(dirname "$0")" && pwd)/config.json"
 
 if [[ ! -f "$CONFIG" ]]; then
     echo "Fehler: Konfigurationsdatei nicht gefunden."
@@ -33,141 +12,152 @@ if [[ ! -f "$CONFIG" ]]; then
     exit 1
 fi
 
-titel_liste=()
-befehl_liste=()
+exec python3 -c "$(cat <<'PYTHON_ENDE'
+import json, os, sys, select, tty, termios, subprocess
 
-while IFS=$'\t' read -r titel befehl; do
-    titel_liste+=("$titel")
-    befehl_liste+=("$befehl")
-done < <(python3 -c "
-import json
-with open('$CONFIG') as f:
-    daten = json.load(f)
-for eintrag in daten.get('eintraege', []):
-    print(f\"{eintrag['titel']}\t{eintrag['befehl']}\")
-")
+CONFIG = sys.argv[1]
 
-anzahl=${#titel_liste[@]}
-if (( anzahl == 0 )); then
-    echo "Fehler: Keine Einträge in der Konfigurationsdatei gefunden."
-    read -r -p "Taste zum Beenden drücken..."
-    exit 1
-fi
+with open(CONFIG) as f:
+    eintraege = json.load(f).get("eintraege", [])
 
-# Tastendruck einlesen (mit Python, weil die alte macOS-Bash 3.2 keine
-# Dezimal-Timeouts kann und sonst 1 Sekunde warten wuerde)
-lies_taste() {
-    python3 -c '
-import os, sys, select
-try:
-    import tty, termios
-    fd = sys.stdin.fileno()
-    alt = termios.tcgetattr(fd)
-    tty.setcbreak(fd)
-    ist_tty = True
-except Exception:
-    ist_tty = False
-try:
-    ch = os.read(fd, 1).decode("utf-8", "surrogateescape")
-    if ch == "\x1b" and select.select([fd], [], [], 0.02)[0]:
-        ch += os.read(fd, 2).decode("utf-8", "surrogateescape")
-finally:
-    if ist_tty:
-        termios.tcsetattr(fd, termios.TCSADRAIN, alt)
-sys.stdout.write(ch)
-'
-}
+if not eintraege:
+    print("Fehler: Keine Einträge in der Konfigurationsdatei gefunden.")
+    input("Taste zum Beenden drücken...")
+    sys.exit(1)
 
-auswahl=0
+titel_liste = [e["titel"] for e in eintraege]
+befehl_liste = [e["befehl"] for e in eintraege]
+ANZAHL = len(titel_liste)
 
-zeichne_menue() {
-    local zeilen spalten
-    if ! read -r zeilen spalten < <(stty size 2>/dev/null); then
-        zeilen=24; spalten=80
-    fi
-    [[ -z "$zeilen" || -z "$spalten" ]] && { zeilen=24; spalten=80; }
+EINRUECK = "    "
+TITEL = "SCHNELLSTART"
 
-    local hoehe=$(( anzahl + 3 ))
-    local start_zeile=1
-    (( zeilen > hoehe )) && (( start_zeile = (zeilen - hoehe) / 2 + 1 ))
+AUS = "\033[?25l"
+AN = "\033[?25h"
+LOESCHEN = "\033[2J\033[3J\033[H"
 
-    local breite=$EINRUECK_TITEL
-    local i l
-    for i in "${!titel_liste[@]}"; do
-        l=$(( ${#EINRUECK} + 2 + ${#titel_liste[$i]} ))
-        (( l > breite )) && breite=$l
-    done
-    local start_spalte=1
-    (( spalten > breite )) && (( start_spalte = (spalten - breite) / 2 + 1 ))
 
-    # Absolut positioniertes Zeichnen; \033[3J leert den Scrollback.
-    local puffer zeile
-    puffer=$(
-        printf '\033[2J\033[3J\033[H'
-        zeile=$start_zeile
-        printf '\033[%s;%sH\033[K' "$zeile" "$start_spalte"; (( zeile++ ))
-        printf '\033[%s;%sH\033[1mSCHNELLSTART\033[0m\033[K' "$zeile" "$start_spalte"; (( zeile++ ))
-        printf '\033[%s;%sH\033[K' "$zeile" "$start_spalte"; (( zeile++ ))
-        for i in "${!titel_liste[@]}"; do
-            if (( i == auswahl )); then
-                printf '\033[%s;%sH▸ \033[1m%s\033[0m\033[K' "$zeile" "$start_spalte" "${titel_liste[$i]}"
-            else
-                printf '\033[%s;%sH  %s\033[K' "$zeile" "$start_spalte" "${titel_liste[$i]}"
-            fi
-            (( zeile++ ))
-        done
-        printf '\033[%s;1H' "$start_zeile"
+def fenstergroesse():
+    try:
+        zeilen, spalten = os.get_terminal_size(0)
+    except Exception:
+        try:
+            zeilen, spalten = os.get_terminal_size(1)
+        except Exception:
+            zeilen, spalten = 24, 80
+    return zeilen, spalten
+
+
+def ist_gui_befehl(befehl):
+    return "open -a" in befehl or "osascript" in befehl
+
+
+def zeichne_menue(auswahl):
+    zeilen, spalten = fenstergroesse()
+    hoehe = ANZAHL + 3
+    start_zeile = (zeilen - hoehe) // 2 + 1 if zeilen > hoehe else 1
+
+    breite = max(
+        len(TITEL) + len(EINRUECK),
+        max(len(t) + len(EINRUECK) + 2 for t in titel_liste),
     )
-    printf '%s' "$puffer"
-}
+    start_spalte = (spalten - breite) // 2 + 1 if spalten > breite else 1
 
-ausfuehren() {
-    local befehl="${befehl_liste[$auswahl]}"
-    local zeilen spalten zeile
-    if ! read -r zeilen spalten < <(stty size 2>/dev/null); then
-        zeilen=24; spalten=80
-    fi
-    [[ -z "$zeilen" || -z "$spalten" ]] && { zeilen=24; spalten=80; }
-    zeile=$(( zeilen / 2 + anzahl / 2 + 3 ))
-    (( zeile > zeilen )) && zeile=$zeilen
-    printf '\033[%s;1H\033[K' "$zeile"
-    printf 'Starte: %s...\n' "${titel_liste[$auswahl]}"
-    if ist_gui_befehl "$befehl"; then
-        ( eval "$befehl" >/dev/null 2>&1 & )
-        fenster_schliessen
-    else
-        cursor_an
-        clear
-        eval "$befehl"
-    fi
-}
+    p = [LOESCHEN]
+    z = start_zeile
+    p.append(f"\033[{z};{start_spalte}H\033[K")
+    z += 1
+    p.append(f"\033[{z};{start_spalte}H{EINRUECK}\033[1m{TITEL}\033[0m\033[K")
+    z += 1
+    p.append(f"\033[{z};{start_spalte}H\033[K")
+    z += 1
+    for i, titel in enumerate(titel_liste):
+        if i == auswahl:
+            p.append(f"\033[{z};{start_spalte}H{EINRUECK}▸ \033[1m{titel}\033[0m\033[K")
+        else:
+            p.append(f"\033[{z};{start_spalte}H{EINRUECK}  {titel}\033[K")
+        z += 1
+    p.append(f"\033[{start_zeile};1H")
+    sys.stdout.write("".join(p))
+    sys.stdout.flush()
 
-fenster_schliessen() {
-    if [[ "$OSTYPE" == darwin* ]]; then
-        osascript -e 'tell application "Terminal" to close front window' >/dev/null 2>&1 &
-    fi
-    exit 0
-}
 
-EINRUECK="  "
-EINRUECK_TITEL=$(( ${#EINRUECK} + 11 ))
+def lies_taste(fd):
+    ch = os.read(fd, 1)
+    if ch == b"\x1b" and select.select([fd], [], [], 0.02)[0]:
+        ch += os.read(fd, 2)
+    return ch.decode("utf-8", "surrogateescape")
 
-# Bei Fenstergrößenänderung (Resize) sofort neu zeichnen
-trap 'zeichne_menue' WINCH
 
-cursor_aus
-zeichne_menue
-while true; do
-    taste="$(lies_taste)"
-    case "$taste" in
-        $'\x1b[A')
-            (( auswahl-- ))
-            (( auswahl < 0 )) && (( auswahl = anzahl - 1 ))
-            ;;
-        $'\x1b[B') (( auswahl = (auswahl + 1) % anzahl )) ;;
-        $'\x1b') beenden ;;
-        "") ausfuehren; exit 0 ;;
-        q)  beenden ;;
-    esac
-    zeichne_menue
-done
+def beenden(fd, alt):
+    sys.stdout.write(LOESCHEN + AN)
+    sys.stdout.flush()
+    if alt is not None:
+        termios.tcsetattr(fd, termios.TCSADRAIN, alt)
+    sys.exit(0)
+
+
+def main():
+    fd = sys.stdin.fileno()
+    try:
+        alt = termios.tcgetattr(fd)
+        tty.setcbreak(fd)
+    except termios.error:
+        alt = None
+
+    import signal
+
+    def bei_resize(sig, frame):
+        zeichne_menue(AUSWAHL[0])
+
+    signal.signal(signal.SIGWINCH, bei_resize)
+    AUSWAHL = [0]
+
+    sys.stdout.write(AUS)
+    sys.stdout.flush()
+    zeichne_menue(0)
+
+    while True:
+        taste = lies_taste(fd)
+        if taste == "\x1b[A":
+            AUSWAHL[0] = (AUSWAHL[0] - 1) % ANZAHL
+            zeichne_menue(AUSWAHL[0])
+        elif taste == "\x1b[B":
+            AUSWAHL[0] = (AUSWAHL[0] + 1) % ANZAHL
+            zeichne_menue(AUSWAHL[0])
+        elif taste in ("\x1b", "q"):
+            beenden(fd, alt)
+        elif taste in ("", "\r", "\n"):
+            break
+
+    befehl = befehl_liste[AUSWAHL[0]]
+    zeilen, spalten = fenstergroesse()
+    zeile = min(zeilen, zeilen // 2 + ANZAHL // 2 + 3)
+    sys.stdout.write(f"\033[{zeile};1H\033[KStarte: {titel_liste[AUSWAHL[0]]}...\n")
+    sys.stdout.flush()
+    if alt is not None:
+        termios.tcsetattr(fd, termios.TCSADRAIN, alt)
+
+    if ist_gui_befehl(befehl):
+        # GUI-Programm entkoppelt starten (überlebt das Skript) ...
+        subprocess.Popen(
+            befehl, shell=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        # ... und Terminalfenster sofort schließen
+        if sys.platform == "darwin":
+            subprocess.run(
+                ["osascript", "-e",
+                 'tell application "Terminal" to close front window'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+    else:
+        sys.stdout.write("\033[2J\033[H")
+        sys.stdout.flush()
+        os.system(befehl)
+
+
+main()
+PYTHON_ENDE
+)" "$CONFIG"

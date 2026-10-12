@@ -4,8 +4,8 @@ QUELLE="$(cd "$(dirname "$0")" && pwd)"
 ZIEL_KONFIG="$HOME/.config/schnellstart"
 ZIEL_SKRIPT="$ZIEL_KONFIG/start.sh"
 
-if ! grep -q 'cursor_aus' "$QUELLE/start.sh"; then
-    echo "Fehler: Die start.sh im Quellordner ist noch die ALTE Version."
+if ! grep -q 'SCHNELLSTART' "$QUELLE/start.sh"; then
+    echo "Fehler: start.sh im Quellordner unvollständig."
     exit 1
 fi
 
