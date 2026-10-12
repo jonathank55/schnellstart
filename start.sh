@@ -8,6 +8,13 @@ cursor_an()  { printf '\033[?25h'; }
 aufraeumen() { cursor_an; }
 trap aufraeumen EXIT
 
+# Menü sauber vom Bildschirm entfernen und Cursor wiederherstellen
+beenden() {
+    printf '\033[2J\033[3J\033[H'
+    cursor_an
+    exit 0
+}
+
 ist_gui_befehl() {
     case "$1" in
         *open\ -a*|*osascript*) return 0 ;;
@@ -142,11 +149,11 @@ while true; do
                 esac
             else
                 # ESC allein gedrückt → Menü schließen
-                exit 0
+                beenden
             fi
             ;;
         "") ausfuehren; exit 0 ;;
-        q)  exit 0 ;;
+        q)  beenden ;;
     esac
     zeichne_menue
 done
