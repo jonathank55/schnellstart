@@ -36,47 +36,24 @@ AUS = "\033[?25l"
 AN = "\033[?25h"
 LOESCHEN = "\033[2J\033[3J\033[H"
 
-
-def fenstergroesse():
-    try:
-        zeilen, spalten = os.get_terminal_size(0)
-    except Exception:
-        try:
-            zeilen, spalten = os.get_terminal_size(1)
-        except Exception:
-            zeilen, spalten = 24, 80
-    return zeilen, spalten
+auswahl = 0
 
 
 def ist_gui_befehl(befehl):
     return "open -a" in befehl or "osascript" in befehl
 
 
-def zeichne_menue(auswahl):
-    zeilen, spalten = fenstergroesse()
-    start_zeile = 1   # Menü beginnt oben
-
-    breite = max(
-        len(TITEL) + len(EINRUECK),
-        max(len(t) + len(EINRUECK) + 2 for t in titel_liste),
-    )
-    start_spalte = (spalten - breite) // 2 + 1 if spalten > breite else 1
-
-    p = [LOESCHEN]
-    z = start_zeile
-    p.append(f"\033[{z};{start_spalte}H\033[K")
-    z += 1
-    p.append(f"\033[{z};{start_spalte}H{EINRUECK}\033[1m{TITEL}\033[0m\033[K")
-    z += 1
-    p.append(f"\033[{z};{start_spalte}H\033[K")
-    z += 1
+def zeichne_menue():
+    # Statisches Menü: fester Abstand links, Überschrift oben.
+    # Alles in einem Schreibvorgang -> kein Flackern.
+    p = [LOESCHEN, "\n"]
+    p.append(f"{EINRUECK}\033[1m{TITEL}\033[0m\n")
+    p.append("\n")
     for i, titel in enumerate(titel_liste):
         if i == auswahl:
-            p.append(f"\033[{z};{start_spalte}H{EINRUECK}▸ \033[1m{titel}\033[0m\033[K")
+            p.append(f"{EINRUECK}▸ \033[1m{titel}\033[0m\n")
         else:
-            p.append(f"\033[{z};{start_spalte}H{EINRUECK}  {titel}\033[K")
-        z += 1
-    p.append(f"\033[{start_zeile};1H")
+            p.append(f"{EINRUECK}  {titel}\n")
     sys.stdout.write("".join(p))
     sys.stdout.flush()
 
@@ -97,6 +74,7 @@ def beenden(fd, alt):
 
 
 def main():
+    global auswahl
     fd = sys.stdin.fileno()
     try:
         alt = termios.tcgetattr(fd)
@@ -104,50 +82,48 @@ def main():
     except termios.error:
         alt = None
 
-    import signal
-
-    def bei_resize(sig, frame):
-        zeichne_menue(AUSWAHL[0])
-
-    signal.signal(signal.SIGWINCH, bei_resize)
-    AUSWAHL = [0]
-
     sys.stdout.write(AUS)
     sys.stdout.flush()
-    zeichne_menue(0)
+    zeichne_menue()
 
     while True:
         taste = lies_taste(fd)
         if taste == "\x1b[A":
-            AUSWAHL[0] = (AUSWAHL[0] - 1) % ANZAHL
-            zeichne_menue(AUSWAHL[0])
+            auswahl = (auswahl - 1) % ANZAHL
+            zeichne_menue()
         elif taste == "\x1b[B":
-            AUSWAHL[0] = (AUSWAHL[0] + 1) % ANZAHL
-            zeichne_menue(AUSWAHL[0])
+            auswahl = (auswahl + 1) % ANZAHL
+            zeichne_menue()
         elif taste in ("\x1b", "q"):
             beenden(fd, alt)
         elif taste in ("", "\r", "\n"):
             break
 
-    befehl = befehl_liste[AUSWAHL[0]]
-    zeilen, spalten = fenstergroesse()
-    zeile = min(zeilen, ANZAHL + 5)
-    sys.stdout.write(f"\033[{zeile};1H\033[KStarte: {titel_liste[AUSWAHL[0]]}...\n")
+    befehl = befehl_liste[auswahl]
+    sys.stdout.write(f"\n{EINRUECK}Starte: {titel_liste[auswahl]}...\n")
     sys.stdout.flush()
     if alt is not None:
         termios.tcsetattr(fd, termios.TCSADRAIN, alt)
 
     if ist_gui_befehl(befehl):
+        # App entkoppelt starten (überlebt das Skript und das Terminal) ...
         subprocess.Popen(
             befehl, shell=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
         if sys.platform == "darwin":
-            subprocess.run(
-                ["osascript", "-e",
-                 'tell application "Terminal" to close front window'],
+            # Fenster-Schließen zeitversetzt anstoßen und SOFORT beenden:
+            # wenn der Helper zuschlägt, ist dieser Prozess schon weg,
+            # Terminal sieht also keinen laufenden Prozess mehr und
+            # schließt das Fenster ohne Nachfrage.
+            subprocess.Popen(
+                ["sh", "-c",
+                 "sleep 0.2; "
+                 "osascript -e 'tell application \"Terminal\" "
+                 "to close front window' >/dev/null 2>&1"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True,
             )
     else:
         sys.stdout.write("\033[2J\033[H")
