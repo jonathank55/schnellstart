@@ -54,6 +54,30 @@ if (( anzahl == 0 )); then
     exit 1
 fi
 
+# Tastendruck einlesen (mit Python, weil die alte macOS-Bash 3.2 keine
+# Dezimal-Timeouts kann und sonst 1 Sekunde warten wuerde)
+lies_taste() {
+    python3 -c '
+import os, sys, select
+try:
+    import tty, termios
+    fd = sys.stdin.fileno()
+    alt = termios.tcgetattr(fd)
+    tty.setcbreak(fd)
+    ist_tty = True
+except Exception:
+    ist_tty = False
+try:
+    ch = os.read(fd, 1).decode("utf-8", "surrogateescape")
+    if ch == "\x1b" and select.select([fd], [], [], 0.02)[0]:
+        ch += os.read(fd, 2).decode("utf-8", "surrogateescape")
+finally:
+    if ist_tty:
+        termios.tcsetattr(fd, termios.TCSADRAIN, alt)
+sys.stdout.write(ch)
+'
+}
+
 auswahl=0
 
 zeichne_menue() {
@@ -134,24 +158,14 @@ trap 'zeichne_menue' WINCH
 cursor_aus
 zeichne_menue
 while true; do
-    IFS= read -rsn1 taste
+    taste="$(lies_taste)"
     case "$taste" in
-        $'\x1b')
-            # Escape kann Pfeiltasten einleiten: kurz auf Folgebytes warten.
-            # Wichtig: ganzzahlige Zeit (macOS-bash 3.2 kann keine Dezimal-Timeouts).
-            if read -rsn2 -t 1 rest 2>/dev/null; then
-                case "$rest" in
-                    '[A')
-                        (( auswahl-- ))
-                        (( auswahl < 0 )) && (( auswahl = anzahl - 1 ))
-                        ;;
-                    '[B') (( auswahl = (auswahl + 1) % anzahl )) ;;
-                esac
-            else
-                # ESC allein gedrückt → Menü schließen
-                beenden
-            fi
+        $'\x1b[A')
+            (( auswahl-- ))
+            (( auswahl < 0 )) && (( auswahl = anzahl - 1 ))
             ;;
+        $'\x1b[B') (( auswahl = (auswahl + 1) % anzahl )) ;;
+        $'\x1b') beenden ;;
         "") ausfuehren; exit 0 ;;
         q)  beenden ;;
     esac
