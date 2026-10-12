@@ -54,8 +54,7 @@ def ist_gui_befehl(befehl):
 
 def zeichne_menue(auswahl):
     zeilen, spalten = fenstergroesse()
-    hoehe = ANZAHL + 3
-    start_zeile = (zeilen - hoehe) // 2 + 1 if zeilen > hoehe else 1
+    start_zeile = 1   # Menü beginnt oben
 
     breite = max(
         len(TITEL) + len(EINRUECK),
@@ -132,20 +131,18 @@ def main():
 
     befehl = befehl_liste[AUSWAHL[0]]
     zeilen, spalten = fenstergroesse()
-    zeile = min(zeilen, zeilen // 2 + ANZAHL // 2 + 3)
+    zeile = min(zeilen, ANZAHL + 5)
     sys.stdout.write(f"\033[{zeile};1H\033[KStarte: {titel_liste[AUSWAHL[0]]}...\n")
     sys.stdout.flush()
     if alt is not None:
         termios.tcsetattr(fd, termios.TCSADRAIN, alt)
 
     if ist_gui_befehl(befehl):
-        # GUI-Programm entkoppelt starten (überlebt das Skript) ...
         subprocess.Popen(
             befehl, shell=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-        # ... und Terminalfenster sofort schließen
         if sys.platform == "darwin":
             subprocess.run(
                 ["osascript", "-e",
