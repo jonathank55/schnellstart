@@ -13,7 +13,7 @@ if [[ ! -f "$CONFIG" ]]; then
 fi
 
 exec python3 -c "$(cat <<'PYTHON_ENDE'
-import json, os, sys, select, tty, termios, subprocess
+import json, os, sys, select, tty, termios, subprocess, shutil
 
 CONFIG = sys.argv[1]
 
@@ -26,8 +26,8 @@ if not eintraege:
     sys.exit(1)
 
 EINRUECK = "    "
-AUS = "\033[?25l"
-AN = "\033[?25h"
+INVERS_AN = "\033[7m"
+INVERS_AUS = "\033[27m"
 LOESCHEN = "\033[2J\033[3J\033[H"
 
 
@@ -36,14 +36,18 @@ def ist_gui_befehl(befehl):
 
 
 def zeichne_menue(titel, liste, auswahl):
+    breite = shutil.get_terminal_size().columns
     p = [LOESCHEN, "\n"]
-    p.append(f"{EINRUECK}\033[1m{titel}\033[0m\n")
+    p.append(f"{EINRUECK}{titel}\n")
     p.append("\n")
     for i, e in enumerate(liste):
+        zeile = f"{EINRUECK}[{i + 1}] {e['titel']}"
         if i == auswahl:
-            p.append(f"{EINRUECK}\033[1m[{i + 1}] ▸ {e['titel']}\033[0m\n")
+            # Ausgewählte Zeile: ganze Terminalbreite invertiert füllen
+            zeile = zeile.ljust(breite)
+            p.append(f"{INVERS_AN}{zeile}{INVERS_AUS}\n")
         else:
-            p.append(f"{EINRUECK}[{i + 1}]   {e['titel']}\n")
+            p.append(f"{zeile}\n")
     sys.stdout.write("".join(p))
     sys.stdout.flush()
 
@@ -80,7 +84,7 @@ def auswaehlen(fd, alt, titel, liste):
 
 
 def beenden(fd, alt):
-    sys.stdout.write(LOESCHEN + AN)
+    sys.stdout.write(LOESCHEN)
     sys.stdout.flush()
     if alt is not None:
         termios.tcsetattr(fd, termios.TCSADRAIN, alt)
@@ -123,8 +127,6 @@ def starte_befehl(titel, befehl, fd, alt):
             tty.setcbreak(fd)
         except termios.error:
             pass
-        sys.stdout.write(AUS)
-        sys.stdout.flush()
         return False
     return True
 
@@ -136,9 +138,6 @@ def main():
         tty.setcbreak(fd)
     except termios.error:
         alt = None
-
-    sys.stdout.write(AUS)
-    sys.stdout.flush()
 
     liste = eintraege
     while True:
