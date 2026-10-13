@@ -13,7 +13,7 @@ if [[ ! -f "$CONFIG" ]]; then
 fi
 
 exec python3 -c "$(cat <<'PYTHON_ENDE'
-import json, os, sys, select, tty, termios, subprocess, shutil
+import json, os, sys, select, tty, termios, subprocess, shutil, signal
 
 CONFIG = sys.argv[1]
 
@@ -26,9 +26,18 @@ if not eintraege:
     sys.exit(1)
 
 EINRUECK = "    "
-INVERS_AN = "\033[7m"
-INVERS_AUS = "\033[27m"
+AUS = "\033[?25l"
+AN = "\033[?25h"
+INVERS_AN = "\033[1;7m"
+INVERS_AUS = "\033[27;22m"
 LOESCHEN = "\033[2J\033[3J\033[H"
+
+resize_flag = [False]
+
+
+def bei_resize(signum, frame):
+    # Terminalgroesse geaendert: Menue beim naechsten Poll neu zeichnen
+    resize_flag[0] = True
 
 
 def ist_gui_befehl(befehl):
@@ -43,7 +52,7 @@ def zeichne_menue(titel, liste, auswahl):
     for i, e in enumerate(liste):
         zeile = f"{EINRUECK}[{i + 1}] {e['titel']}"
         if i == auswahl:
-            # Ausgewählte Zeile: ganze Terminalbreite invertiert füllen
+            # Ausgewaehlte Zeile: fett + ganze Terminalbreite invertiert fuellen
             zeile = zeile.ljust(breite)
             p.append(f"{INVERS_AN}{zeile}{INVERS_AUS}\n")
         else:
@@ -53,6 +62,14 @@ def zeichne_menue(titel, liste, auswahl):
 
 
 def lies_taste(fd):
+    # Warten auf Taste ODER Resize-Signal (SIGWINCH unterbricht select()
+    # nicht auf allen Plattformen, daher kurzer Poll-Takt als Fallback).
+    while True:
+        if select.select([fd], [], [], 0.1)[0]:
+            break
+        if resize_flag[0]:
+            resize_flag[0] = False
+            return "resize"
     ch = os.read(fd, 1)
     if ch == b"\x1b" and select.select([fd], [], [], 0.02)[0]:
         ch += os.read(fd, 2)
@@ -67,7 +84,10 @@ def auswaehlen(fd, alt, titel, liste):
     zeichne_menue(titel, liste, auswahl)
     while True:
         taste = lies_taste(fd)
-        if taste == "\x1b[A":
+        if taste == "resize":
+            zeichne_menue(titel, liste, auswahl)
+            continue
+        elif taste == "\x1b[A":
             auswahl = (auswahl - 1) % anzahl
             zeichne_menue(titel, liste, auswahl)
         elif taste == "\x1b[B":
@@ -84,7 +104,7 @@ def auswaehlen(fd, alt, titel, liste):
 
 
 def beenden(fd, alt):
-    sys.stdout.write(LOESCHEN)
+    sys.stdout.write(LOESCHEN + AN)
     sys.stdout.flush()
     if alt is not None:
         termios.tcsetattr(fd, termios.TCSADRAIN, alt)
@@ -96,6 +116,8 @@ def starte_befehl(titel, befehl, fd, alt):
     sys.stdout.flush()
     if alt is not None:
         termios.tcsetattr(fd, termios.TCSADRAIN, alt)
+    sys.stdout.write(AN)
+    sys.stdout.flush()
 
     if ist_gui_befehl(befehl):
         # App entkoppelt starten (überlebt das Skript und das Terminal) ...
@@ -121,12 +143,14 @@ def starte_befehl(titel, befehl, fd, alt):
         sys.stdout.write("\033[2J\033[H")
         sys.stdout.flush()
         os.system(befehl)
-        # Nach CLI-Befehl (z. B. VPN) zurück ins Menü statt beenden:
-        # Terminal-Modus wiederherstellen und weitere Eingaben zulassen.
+        # Nach CLI-Befehl zurück ins Menü statt beenden:
+        # Terminal-Modus und versteckten Cursor wiederherstellen.
         try:
             tty.setcbreak(fd)
         except termios.error:
             pass
+        sys.stdout.write(AUS)
+        sys.stdout.flush()
         return False
     return True
 
@@ -138,6 +162,11 @@ def main():
         tty.setcbreak(fd)
     except termios.error:
         alt = None
+
+    signal.signal(signal.SIGWINCH, bei_resize)
+
+    sys.stdout.write(AUS)
+    sys.stdout.flush()
 
     liste = eintraege
     while True:
