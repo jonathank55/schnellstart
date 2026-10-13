@@ -117,6 +117,16 @@ def starte_befehl(titel, befehl, fd, alt):
         sys.stdout.write("\033[2J\033[H")
         sys.stdout.flush()
         os.system(befehl)
+        # Nach CLI-Befehl (z. B. VPN) zurück ins Menü statt beenden:
+        # Terminal-Modus wiederherstellen und weitere Eingaben zulassen.
+        try:
+            tty.setcbreak(fd)
+        except termios.error:
+            pass
+        sys.stdout.write(AUS)
+        sys.stdout.flush()
+        return False
+    return True
 
 
 def main():
@@ -143,12 +153,13 @@ def main():
                 sub_index = auswaehlen(fd, alt, eintrag["titel"].upper(), sub_liste)
                 if sub_index is None:
                     break
-                starte_befehl(sub_liste[sub_index]["titel"],
-                              sub_liste[sub_index]["befehl"], fd, alt)
-                beenden(fd, alt)
+                if starte_befehl(sub_liste[sub_index]["titel"],
+                                 sub_liste[sub_index]["befehl"], fd, alt):
+                    beenden(fd, alt)
+                continue
             continue
-        starte_befehl(eintrag["titel"], eintrag["befehl"], fd, alt)
-        beenden(fd, alt)
+        if starte_befehl(eintrag["titel"], eintrag["befehl"], fd, alt):
+            beenden(fd, alt)
 
 
 main()
