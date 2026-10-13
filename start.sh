@@ -28,6 +28,8 @@ if not eintraege:
 EINRUECK = "    "
 AUS = "\033[?25l"
 AN = "\033[?25h"
+FETT_AN = "\033[1m"
+FETT_AUS = "\033[22m"
 INVERS_AN = "\033[1;7m"
 INVERS_AUS = "\033[27;22m"
 LOESCHEN = "\033[2J\033[3J\033[H"
@@ -47,7 +49,7 @@ def ist_gui_befehl(befehl):
 def zeichne_menue(titel, liste, auswahl):
     breite = shutil.get_terminal_size().columns
     p = [LOESCHEN, "\n"]
-    p.append(f"{EINRUECK}{titel}\n")
+    p.append(f"{EINRUECK}{FETT_AN}{titel}{FETT_AUS}\n")
     p.append("\n")
     for i, e in enumerate(liste):
         zeile = f"{EINRUECK}[{i + 1}] {e['titel']}"
