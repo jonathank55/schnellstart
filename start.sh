@@ -25,35 +25,25 @@ if not eintraege:
     input("Taste zum Beenden drücken...")
     sys.exit(1)
 
-titel_liste = [e["titel"] for e in eintraege]
-befehl_liste = [e["befehl"] for e in eintraege]
-ANZAHL = len(titel_liste)
-
 EINRUECK = "    "
-TITEL = "SCHNELLSTART"
-
 AUS = "\033[?25l"
 AN = "\033[?25h"
 LOESCHEN = "\033[2J\033[3J\033[H"
-
-auswahl = 0
 
 
 def ist_gui_befehl(befehl):
     return "open -a" in befehl or "osascript" in befehl
 
 
-def zeichne_menue():
-    # Statisches Menü: fester Abstand links, Überschrift oben.
-    # Alles in einem Schreibvorgang -> kein Flackern.
+def zeichne_menue(titel, liste, auswahl):
     p = [LOESCHEN, "\n"]
-    p.append(f"{EINRUECK}\033[1m{TITEL}\033[0m\n")
+    p.append(f"{EINRUECK}\033[1m{titel}\033[0m\n")
     p.append("\n")
-    for i, titel in enumerate(titel_liste):
+    for i, e in enumerate(liste):
         if i == auswahl:
-            p.append(f"{EINRUECK}\033[1m[{i + 1}] ▸ {titel}\033[0m\n")
+            p.append(f"{EINRUECK}\033[1m[{i + 1}] ▸ {e['titel']}\033[0m\n")
         else:
-            p.append(f"{EINRUECK}[{i + 1}]   {titel}\n")
+            p.append(f"{EINRUECK}[{i + 1}]   {e['titel']}\n")
     sys.stdout.write("".join(p))
     sys.stdout.flush()
 
@@ -65,6 +55,30 @@ def lies_taste(fd):
     return ch.decode("utf-8", "surrogateescape")
 
 
+def auswaehlen(fd, alt, titel, liste):
+    # Lässt den Benutzer in einer Liste navigieren; gibt Index zurück.
+    # Esc/q: None (zurück bzw. beenden).
+    auswahl = 0
+    anzahl = len(liste)
+    zeichne_menue(titel, liste, auswahl)
+    while True:
+        taste = lies_taste(fd)
+        if taste == "\x1b[A":
+            auswahl = (auswahl - 1) % anzahl
+            zeichne_menue(titel, liste, auswahl)
+        elif taste == "\x1b[B":
+            auswahl = (auswahl + 1) % anzahl
+            zeichne_menue(titel, liste, auswahl)
+        elif taste in ("\x1b", "q"):
+            return None
+        elif taste in ("", "\r", "\n"):
+            return auswahl
+        elif taste.isdigit() and 1 <= int(taste) <= anzahl:
+            auswahl = int(taste) - 1
+            zeichne_menue(titel, liste, auswahl)
+            return auswahl
+
+
 def beenden(fd, alt):
     sys.stdout.write(LOESCHEN + AN)
     sys.stdout.flush()
@@ -73,39 +87,8 @@ def beenden(fd, alt):
     sys.exit(0)
 
 
-def main():
-    global auswahl
-    fd = sys.stdin.fileno()
-    try:
-        alt = termios.tcgetattr(fd)
-        tty.setcbreak(fd)
-    except termios.error:
-        alt = None
-
-    sys.stdout.write(AUS)
-    sys.stdout.flush()
-    zeichne_menue()
-
-    while True:
-        taste = lies_taste(fd)
-        if taste == "\x1b[A":
-            auswahl = (auswahl - 1) % ANZAHL
-            zeichne_menue()
-        elif taste == "\x1b[B":
-            auswahl = (auswahl + 1) % ANZAHL
-            zeichne_menue()
-        elif taste in ("\x1b", "q"):
-            beenden(fd, alt)
-        elif taste in ("", "\r", "\n"):
-            break
-        elif taste.isdigit() and 1 <= int(taste) <= ANZAHL:
-            # Nummertaste: Eintrag direkt auswählen und starten
-            auswahl = int(taste) - 1
-            zeichne_menue()
-            break
-
-    befehl = befehl_liste[auswahl]
-    sys.stdout.write(f"\n{EINRUECK}Starte: {titel_liste[auswahl]}...\n")
+def starte_befehl(befehl, fd, alt):
+    sys.stdout.write(f"\n{EINRUECK}Starte: {befehl_titel}...\n")
     sys.stdout.flush()
     if alt is not None:
         termios.tcsetattr(fd, termios.TCSADRAIN, alt)
@@ -136,6 +119,42 @@ def main():
         os.system(befehl)
 
 
+def main():
+    fd = sys.stdin.fileno()
+    try:
+        alt = termios.tcgetattr(fd)
+        tty.setcbreak(fd)
+    except termios.error:
+        alt = None
+
+    sys.stdout.write(AUS)
+    sys.stdout.flush()
+
+    liste = eintraege
+    while True:
+        index = auswaehlen(fd, alt, "SCHNELLSTART", liste)
+        if index is None:
+            beenden(fd, alt)
+        eintrag = liste[index]
+        if "untermenu" in eintrag:
+            # Untermenü anzeigen; Esc/q im Untermenü -> zurück zum Hauptmenü
+            sub_liste = eintrag["untermenu"]
+            while True:
+                sub_index = auswaehlen(fd, alt, eintrag["titel"].upper(), sub_liste)
+                if sub_index is None:
+                    break
+                global befehl_titel
+                befehl_titel = sub_liste[sub_index]["titel"]
+                starte_befehl(sub_liste[sub_index]["befehl"], fd, alt)
+                beenden(fd, alt)
+            continue
+        global befehl_titel
+        befehl_titel = eintrag["titel"]
+        starte_befehl(eintrag["befehl"], fd, alt)
+        beenden(fd, alt)
+
+
+befehl_titel = ""
 main()
 PYTHON_ENDE
 )" "$CONFIG"
