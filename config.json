@@ -21,12 +21,21 @@
       "befehl": "open -a WhatsApp"
     },
     {
-      "titel": "VPN → DE",
-      "befehl": "windscribe-cli connect DE"
-    },
-    {
-      "titel": "VPN aus",
-      "befehl": "windscribe-cli disconnect"
+      "titel": "VPN",
+      "untermenu": [
+        {
+          "titel": "Verbindung → DE",
+          "befehl": "windscribe-cli connect DE"
+        },
+        {
+          "titel": "Verbindung → Schnellste",
+          "befehl": "windscribe-cli connect best"
+        },
+        {
+          "titel": "Verbindung trennen",
+          "befehl": "windscribe-cli disconnect"
+        }
+      ]
     }
   ]
 }
