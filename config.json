@@ -21,7 +21,7 @@
       "befehl": "open -a WhatsApp"
     },
     {
-      "titel": "VPN-Verbindung → DE",
+      "titel": "VPN → DE",
       "befehl": "windscribe-cli connect DE"
     }
   ]
