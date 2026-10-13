@@ -22,7 +22,11 @@
     },
     {
       "titel": "VPN → DE",
-      "befehl": "windscribe-cli connect DE"
+      "befehl": "sudo wg-quick up windscribe-de"
+    },
+    {
+      "titel": "VPN aus",
+      "befehl": "sudo wg-quick down windscribe-de"
     }
   ]
 }
