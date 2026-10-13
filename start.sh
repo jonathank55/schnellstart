@@ -156,7 +156,8 @@ def main():
                 if starte_befehl(sub_liste[sub_index]["titel"],
                                  sub_liste[sub_index]["befehl"], fd, alt):
                     beenden(fd, alt)
-                continue
+                # Nach CLI-Befehl zurück ins HAUPTmenü
+                break
             continue
         if starte_befehl(eintrag["titel"], eintrag["befehl"], fd, alt):
             beenden(fd, alt)
