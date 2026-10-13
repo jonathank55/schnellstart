@@ -1,37 +1,73 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# ==============================================================================
+# Schnellstart — Terminal-Schnellstartmenü für macOS
+# Installationsskript
+#
+# Zwei Installationswege:
+#   1. Aus dem geklonten Repository:  ./install.sh
+#   2. Einzeilig ohne Klon (macOS, curl vorhanden):
+#      curl -fsSL https://raw.githubusercontent.com/jonathank55/schnellstart/main/install.sh | bash
+# ==============================================================================
+
 set -e
-QUELLE="$(cd "$(dirname "$0")" && pwd)"
-ZIEL_KONFIG="$HOME/.config/schnellstart"
-ZIEL_SKRIPT="$ZIEL_KONFIG/start.sh"
 
-if ! grep -q 'SCHNELLSTART' "$QUELLE/start.sh"; then
-    echo "Fehler: start.sh im Quellordner unvollständig."
-    exit 1
-fi
+echo "=== Installation von Schnellstart ==="
 
-mkdir -p "$ZIEL_KONFIG"
+RAW_BASE="https://raw.githubusercontent.com/jonathank55/schnellstart/main"
+PROGRAMM_DATEIEN=("start.sh" "config.json")
 
-if [[ ! -f "$ZIEL_KONFIG/config.json" ]]; then
-    cp "$QUELLE/config.json" "$ZIEL_KONFIG/config.json"
+# ---------------------------------------------------------------- Quelle ermitteln
+# Wurde das Skript aus einem vorhandenen Repository ausgeführt, liegt dieses
+# Verzeichnis dort, wo die Programmdateien bereits lokal vorliegen. Wurde es
+# per curl direkt in eine Shell gepipt, fehlen diese Dateien und werden
+# vorübergehend in ein Arbeitsverzeichnis heruntergeladen.
+SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
+if [ -f "$SCRIPT_PATH" ] && [ -f "$(dirname "$SCRIPT_PATH")/start.sh" ]; then
+    SRC_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    CLEANUP_DIR=""
+    echo "Installiere aus vorhandenem Verzeichnis: $SRC_DIR"
 else
-    echo "Vorhandene Konfiguration beibehalten."
+    command -v curl >/dev/null 2>&1 || { echo "Fehler: curl wird benötigt, um die Dateien herunterzuladen."; exit 1; }
+    CLEANUP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/schnellstart-install.XXXXXX")"
+    SRC_DIR="$CLEANUP_DIR"
+    echo "Lade Programmdateien von GitHub nach $SRC_DIR ..."
+    for DATEI in "${PROGRAMM_DATEIEN[@]}"; do
+        curl -fsSL "$RAW_BASE/$DATEI" -o "$SRC_DIR/$DATEI"
+    done
+    trap 'rm -rf "$CLEANUP_DIR"' EXIT
 fi
 
-cp "$QUELLE/start.sh" "$ZIEL_SKRIPT"
-chmod +x "$ZIEL_SKRIPT"
+CONFIG_DIR="$HOME/.config/schnellstart"
 
-mkdir -p "$HOME/bin"
-printf '#!/bin/bash\nexec "%s"\n' "$ZIEL_SKRIPT" > "$HOME/bin/start"
-chmod +x "$HOME/bin/start"
-
-if [[ -f "$HOME/.zshrc" ]]; then
-    SHELL_RC="$HOME/.zshrc"
+# 1. Zielverzeichnis im PATH ermitteln
+INSTALL_DIR=""
+if [ -d "$HOME/bin" ] && [[ ":$PATH:" == *":$HOME/bin:"* ]]; then
+    INSTALL_DIR="$HOME/bin"
+elif [ -w /usr/local/bin ]; then
+    INSTALL_DIR="/usr/local/bin"
 else
-    SHELL_RC="$HOME/.bash_profile"
+    mkdir -p "$HOME/bin"
+    INSTALL_DIR="$HOME/bin"
+    echo "Hinweis: Bitte stellen Sie sicher, dass $HOME/bin in Ihrem PATH liegt."
 fi
 
-if ! grep -q 'export PATH="$HOME/bin:$PATH"' "$SHELL_RC" 2>/dev/null; then
-    echo 'export PATH="$HOME/bin:$PATH"' >> "$SHELL_RC"
+# 2. Konfigurationsverzeichnis vorbereiten und Programmdateien installieren
+mkdir -p "$CONFIG_DIR"
+
+if [ ! -f "$CONFIG_DIR/config.json" ]; then
+    echo "Erstelle Standard-Konfiguration in $CONFIG_DIR/config.json..."
+    cp "$SRC_DIR/config.json" "$CONFIG_DIR/config.json"
+else
+    echo "Bestehende Konfiguration in $CONFIG_DIR/config.json bleibt unberührt."
 fi
 
-echo "Installation abgeschlossen! Neues Terminal-Fenster öffnen und 'start' eingeben."
+cp "$SRC_DIR/start.sh" "$CONFIG_DIR/start.sh"
+chmod +x "$CONFIG_DIR/start.sh"
+
+# 3. Ausführbaren Befehl verlinken
+ln -sf "$CONFIG_DIR/start.sh" "$INSTALL_DIR/start"
+
+echo "=============================================================================="
+echo "ERFOLG: Schnellstart wurde erfolgreich installiert!"
+echo "Befehl:  start"
+echo "=============================================================================="
