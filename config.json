@@ -19,6 +19,10 @@
     {
       "titel": "WhatsApp",
       "befehl": "open -a WhatsApp"
+    },
+    {
+      "titel": "Windscribe",
+      "befehl": "windscribe-cli"
     }
   ]
 }
