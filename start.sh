@@ -87,8 +87,8 @@ def beenden(fd, alt):
     sys.exit(0)
 
 
-def starte_befehl(befehl, fd, alt):
-    sys.stdout.write(f"\n{EINRUECK}Starte: {befehl_titel}...\n")
+def starte_befehl(titel, befehl, fd, alt):
+    sys.stdout.write(f"\n{EINRUECK}Starte: {titel}...\n")
     sys.stdout.flush()
     if alt is not None:
         termios.tcsetattr(fd, termios.TCSADRAIN, alt)
@@ -143,18 +143,14 @@ def main():
                 sub_index = auswaehlen(fd, alt, eintrag["titel"].upper(), sub_liste)
                 if sub_index is None:
                     break
-                global befehl_titel
-                befehl_titel = sub_liste[sub_index]["titel"]
-                starte_befehl(sub_liste[sub_index]["befehl"], fd, alt)
+                starte_befehl(sub_liste[sub_index]["titel"],
+                              sub_liste[sub_index]["befehl"], fd, alt)
                 beenden(fd, alt)
             continue
-        global befehl_titel
-        befehl_titel = eintrag["titel"]
-        starte_befehl(eintrag["befehl"], fd, alt)
+        starte_befehl(eintrag["titel"], eintrag["befehl"], fd, alt)
         beenden(fd, alt)
 
 
-befehl_titel = ""
 main()
 PYTHON_ENDE
 )" "$CONFIG"
